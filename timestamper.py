@@ -317,7 +317,7 @@ if __name__ == '__main__':
         
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    tsApp = TimeStamperApp(dummy=1)
+    tsApp = TimeStamperApp(dummy=0)
     tsApp.show()
     sys.exit(app.exec_())    
 
