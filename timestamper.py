@@ -20,6 +20,9 @@ import sys
 from qtpy import QtWidgets, QtCore, QtGui
 import numpy as np
 
+
+DEBUG = False
+
 DEFAULT_TRIGGER_RATE = 20 # In Hz
 SAMPLING_PERIOD = 0.001  # In seconds
 
@@ -62,7 +65,7 @@ class TimeStamper:
         Args:
             pins (list): List of pins of LabJack to monitor as digital inputs.
         """
-        if not dummy:
+        if dummy:
             self.device = DummyDevice()
         else:
             self.device = u3.U3()
@@ -122,9 +125,10 @@ class TimeStamper:
                         self.timestamps_rising[ind].append(timestamp_sec)
                     else:
                         self.timestamps_falling[ind].append(timestamp_sec)
-                    print(f'[{ind}:{self.state[ind]}] {timestamp_sec}')
-                    #print(self.timestamps_rising)
-                    #print(self.timestamps_falling)
+                    if DEBUG:
+                        print(f'[{ind}:{self.state[ind]}] {timestamp_sec}')
+                        #print(self.timestamps_rising)
+                        #print(self.timestamps_falling)
         else:
             change_status = False
         return change_status
@@ -245,8 +249,14 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         if change_status:
             self.counter_rising = [len(self.timestamper.timestamps_rising[ind]) for ind in self.inputs]
             self.counter_falling = [len(self.timestamper.timestamps_falling[ind]) for ind in self.inputs]
-            self.label_rising.setText(f'Input rising counter: {self.counter_rising[0]}')
-            self.label_falling.setText(f'Input falling counter: {self.counter_falling[0]}')
+            #self.counter_rising = len(self.timestamper.timestamps_rising[0])
+            #self.counter_falling = len(self.timestamper.timestamps_falling[0])
+            last_ts_rising = self.timestamper.timestamps_rising[0][-1] if len(self.timestamper.timestamps_rising[0]) else ''
+            last_ts_falling = self.timestamper.timestamps_falling[0][-1] if len(self.timestamper.timestamps_falling[0]) else ''
+            self.label_rising.setText(f'Input rising counter: {self.counter_rising[0]}' +
+                                      f'  [ {last_ts_rising} s ]')
+            self.label_falling.setText(f'Input falling counter: {self.counter_falling[0]}' +
+                                      f'  [ {last_ts_falling} s ]')
             
     def start_stop_polling(self):
         if not self.polling:
