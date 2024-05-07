@@ -1,12 +1,13 @@
 """
 Application to trigger camera frames and collect the timing of TTL sources during experiments.
 
-This version relies on a LabJack U3 device.
+This version relies on a LabJack U3 device, but you can also run it with a dummy (emulator) device:
+python timestamper.py --dummy
 
 TO DO:
 - ts_trigger_falling includes extra values at the beginning and end.
 - Add saving a temp file when stopping the system.
-
+- Allow running the software without u3 package. It fails on u3.BitDirWrite().
 
 DEBUG:
 trig = np.array(tsApp.timestamper.timestamps_trigger_rising)
@@ -219,6 +220,7 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         self.label_max_triggers = QtWidgets.QLabel(f'<b>Max triggers:</b>', self)
         self.max_triggers = QtWidgets.QLineEdit('10', self)
         self.max_triggers.textChanged.connect(self.update_max_triggers)
+        self.label_total_duration = QtWidgets.QLabel(f'<b>Total duration:</b>', self)
         self.label_trigger_counter = QtWidgets.QLabel(f'Trigger counter:', self)
         self.trigger_counter = QtWidgets.QLabel('0', self)
         self.label_rising = QtWidgets.QLabel(f'Input rising counter:  0', self)
@@ -237,6 +239,7 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         max_triggers_layout = QtWidgets.QHBoxLayout()
         max_triggers_layout.addWidget(self.label_max_triggers)
         max_triggers_layout.addWidget(self.max_triggers)
+        max_triggers_layout.addWidget(self.label_total_duration)
         trigger_counter_layout = QtWidgets.QHBoxLayout()
         trigger_counter_layout.addWidget(self.label_trigger_counter)
         trigger_counter_layout.addWidget(self.trigger_counter)
@@ -258,13 +261,14 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         layout.addWidget(self.button_save)
         self.central_widget.setLayout(layout)
         self.setCentralWidget(self.central_widget)
-        self.update_trigger_period()
         self.update_max_triggers()
+        self.update_trigger_period()
         
     @QtCore.Slot()
     def update_trigger_period(self):
         trigger_period_ms = 1000.0 / float(self.trigger_rate.text())
         self.label_trigger_period.setText(f'<b>Period (ms):</b> {trigger_period_ms:0.1f}')
+        self.update_total_duration()
     
     def set_trigger_timer_half_interval(self, trigger_rate):
         timer_half_interval = 0.5/trigger_rate
@@ -273,6 +277,11 @@ class TimeStamperApp(QtWidgets.QMainWindow):
     @QtCore.Slot()
     def update_max_triggers(self):
         self.max_n_triggers = int(self.max_triggers.text())
+        self.update_total_duration()
+
+    def update_total_duration(self):
+        total_duration = self.max_n_triggers / float(self.trigger_rate.text())
+        self.label_total_duration.setText(f'<b>Total duration:</b> {total_duration:0.1f} s')
     
     @QtCore.Slot()
     def trigger(self):
@@ -383,7 +392,10 @@ if __name__ == '__main__':
         
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    tsApp = TimeStamperApp(dummy=1)
+    if '--dummy' in app.arguments():
+        tsApp = TimeStamperApp(dummy=True)
+    else:
+        tsApp = TimeStamperApp()
     tsApp.show()
     sys.exit(app.exec_())
 
