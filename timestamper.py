@@ -303,10 +303,12 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         data['ts_trigger_rising'] = np.array(self.timestamper.timestamps_trigger_rising)
         data['ts_trigger_falling'] = np.array(self.timestamper.timestamps_trigger_falling)
         data['start_time'] = self.start_time.isoformat()
-    
+
+        file_ts = self.start_time.strftime('%Y%m%d_%H%M%S')
+        output_file = f'timestamps_{file_ts}.npz'
         options = QtWidgets.QFileDialog.Options()
         options |= QtWidgets.QFileDialog.DontUseNativeDialog
-        fileName, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Timestamps", "",
+        fileName, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Timestamps", output_file,
                                                             "NPZ Files (*.npz)", options=options)
 
         if fileName:
