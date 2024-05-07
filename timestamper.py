@@ -4,21 +4,29 @@ Application to trigger camera frames and collect the timing of TTL sources durin
 This version relies on a LabJack U3 device.
 
 TO DO:
+- ts_trigger_falling includes extra values at the beginning and end.
 - Add saving a temp file when stopping the system.
+
 
 DEBUG:
 trig = np.array(tsApp.timestamper.timestamps_trigger_rising)
 d = np.diff(trig)
 clf(); hist(d*1000)
 
+d = np.load('/tmp/test000_timestamps_20240506_230427.npz')
+for f in d.files: print(f'{f}: {d[f]}')
+
 """
 
 import datetime
 import time
-import u3
 import sys
 from qtpy import QtWidgets, QtCore, QtGui
 import numpy as np
+try:
+    import u3
+except ImportError:
+    print('Could not import LabJack U3 module. You can only use a dummy device.')
 
 
 DEBUG = False
@@ -85,6 +93,7 @@ class TimeStamper:
         self.input_names = inputnames
        
         self.start_time = datetime.datetime.now()
+        self.trigger_counter = 0
         self.timestamps_trigger_rising = []
         self.timestamps_trigger_falling = []
         self.timestamps_rising = [list() for _ in self.input_pins]
@@ -105,6 +114,7 @@ class TimeStamper:
         timestamp_sec = (timestamp-self.start_time).total_seconds()
         if state:
             self.timestamps_trigger_rising.append(timestamp_sec)
+            self.trigger_counter += 1
         else:
             self.timestamps_trigger_falling.append(timestamp_sec)
         
@@ -147,15 +157,12 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         self.dummy = dummy
         self.polling = False
         self.trigger_state = False
-        if 1: #not dummy:
-            self.timestamper = TimeStamper()
-            self.n_inputs = len(self.timestamper.input_pins)
-            self.start_time = self.timestamper.start_time
-        else:
-            self.start_time = datetime.datetime.now()
-            self.n_inputs = 2
+        self.max_n_triggers = None
+        self.timestamper = TimeStamper(dummy=dummy)
+        self.n_inputs = len(self.timestamper.input_pins)
+        self.start_time = self.timestamper.start_time
         self.inputs = range(self.n_inputs)
-
+        
         self.counter_rising = []
         self.counter_falling = []
         
@@ -175,7 +182,7 @@ class TimeStamperApp(QtWidgets.QMainWindow):
 
     def init_gui(self):
         self.setWindowTitle('TimeStamper')
-        self.settings = QtCore.QSettings('timestamper', 'jaralab')
+        self.settings = QtCore.QSettings('JaraLab', 'timestamper')
         geometry = self.settings.value('geometry')
         if geometry:
             self.restoreGeometry(geometry)
@@ -195,32 +202,56 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         # -- Create a "Save" button --
         self.button_save = QtWidgets.QPushButton('Save', self)
         self.button_save.setMinimumHeight(50)
+        button_font = QtGui.QFont(self.button_save.font())
+        button_font.setPointSize(button_font.pointSize()+2)
+        self.button_save.setFont(button_font)
         self.button_save.clicked.connect(self.save_timestamps)
 
         # -- Create other gui elements --
+        pretty_start_time = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
+        self.label_starttime = QtWidgets.QLabel(f'<b>Start time:</b> {pretty_start_time}', self)
+        self.label_subject = QtWidgets.QLabel(f'<b>Subject:</b>', self)
+        self.subject = QtWidgets.QLineEdit('test000', self)
         self.label_trigger_rate = QtWidgets.QLabel(f'<b>Trigger rate (Hz):</b>', self)
         self.trigger_rate = QtWidgets.QLineEdit(str(DEFAULT_TRIGGER_RATE), self)
         self.label_trigger_period = QtWidgets.QLabel(f'</b>Period (ms):</b>', self)
         self.trigger_rate.textChanged.connect(self.update_trigger_period)
-        self.label_starttime = QtWidgets.QLabel(f'<b>Start time:</b> {self.start_time}', self)
-        self.label_rising = QtWidgets.QLabel(f'Input rising counter:', self)
-        self.label_falling = QtWidgets.QLabel(f'Input falling counter:', self)
+        self.label_max_triggers = QtWidgets.QLabel(f'<b>Max triggers:</b>', self)
+        self.max_triggers = QtWidgets.QLineEdit('10', self)
+        self.max_triggers.textChanged.connect(self.update_max_triggers)
+        self.label_trigger_counter = QtWidgets.QLabel(f'Trigger counter:', self)
+        self.trigger_counter = QtWidgets.QLabel('0', self)
+        self.label_rising = QtWidgets.QLabel(f'Input rising counter:  0', self)
+        self.label_falling = QtWidgets.QLabel(f'Input falling counter:  0', self)
         self.status_bar = self.statusBar()
         self.status_bar.showMessage('Status: Idle')
 
-        # -- Create a horizontal layout for trigger rate --
+        # -- Create a horizontal layouts --
+        subject_layout = QtWidgets.QHBoxLayout()
+        subject_layout.addWidget(self.label_subject)
+        subject_layout.addWidget(self.subject)
         trigger_rate_layout = QtWidgets.QHBoxLayout()
         trigger_rate_layout.addWidget(self.label_trigger_rate)
         trigger_rate_layout.addWidget(self.trigger_rate)
         trigger_rate_layout.addWidget(self.label_trigger_period)
-        
+        max_triggers_layout = QtWidgets.QHBoxLayout()
+        max_triggers_layout.addWidget(self.label_max_triggers)
+        max_triggers_layout.addWidget(self.max_triggers)
+        trigger_counter_layout = QtWidgets.QHBoxLayout()
+        trigger_counter_layout.addWidget(self.label_trigger_counter)
+        trigger_counter_layout.addWidget(self.trigger_counter)
+        trigger_counter_layout.addStretch()
+       
         # -- Add graphical widgets to main window --
         self.central_widget = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.button_startstop)
         layout.addWidget(self.label_starttime)
         
+        layout.addLayout(subject_layout)
         layout.addLayout(trigger_rate_layout)
+        layout.addLayout(max_triggers_layout)
+        layout.addLayout(trigger_counter_layout)
         layout.addWidget(self.label_rising)
         layout.addWidget(self.label_falling)
         layout.addStretch()
@@ -228,6 +259,7 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         self.central_widget.setLayout(layout)
         self.setCentralWidget(self.central_widget)
         self.update_trigger_period()
+        self.update_max_triggers()
         
     @QtCore.Slot()
     def update_trigger_period(self):
@@ -239,9 +271,17 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         self.timer_trigger.setInterval(int(timer_half_interval * 1000))  # Convert to ms
     
     @QtCore.Slot()
+    def update_max_triggers(self):
+        self.max_n_triggers = int(self.max_triggers.text())
+    
+    @QtCore.Slot()
     def trigger(self):
         self.trigger_state = not self.trigger_state
         self.timestamper.trigger(self.trigger_state)
+        if (self.timestamper.trigger_counter >= self.max_n_triggers) and (not self.trigger_state):
+            self.stop_polling()
+        elif self.trigger_state:
+            self.trigger_counter.setText(str(self.timestamper.trigger_counter))
     
     @QtCore.Slot()
     def poll(self):
@@ -253,9 +293,9 @@ class TimeStamperApp(QtWidgets.QMainWindow):
             #self.counter_falling = len(self.timestamper.timestamps_falling[0])
             last_ts_rising = self.timestamper.timestamps_rising[0][-1] if len(self.timestamper.timestamps_rising[0]) else ''
             last_ts_falling = self.timestamper.timestamps_falling[0][-1] if len(self.timestamper.timestamps_falling[0]) else ''
-            self.label_rising.setText(f'Input rising counter: {self.counter_rising[0]}' +
+            self.label_rising.setText(f'Input rising counter:  {self.counter_rising[0]}' +
                                       f'  [ {last_ts_rising} s ]')
-            self.label_falling.setText(f'Input falling counter: {self.counter_falling[0]}' +
+            self.label_falling.setText(f'Input falling counter:  {self.counter_falling[0]}' +
                                       f'  [ {last_ts_falling} s ]')
             
     def start_stop_polling(self):
@@ -305,20 +345,34 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         data['start_time'] = self.start_time.isoformat()
 
         file_ts = self.start_time.strftime('%Y%m%d_%H%M%S')
-        output_file = f'timestamps_{file_ts}.npz'
+        subject = self.subject.text()
+        last_saved_dir_path = self.settings.value('last_saved_dir_path')
+        output_filename = f'{subject}_timestamps_{file_ts}.npz'
+        # FIXME: using the last_saved is not working in the QFileDialog
+        #output_full_path = QtCore.QDir(last_saved_dir_path).filePath(output_filename)
         options = QtWidgets.QFileDialog.Options()
-        options |= QtWidgets.QFileDialog.DontUseNativeDialog
-        fileName, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Timestamps", output_file,
-                                                            "NPZ Files (*.npz)", options=options)
-
-        if fileName:
-            np.savez(fileName, **data)
-            self.status_bar.showMessage(f'Saved to {fileName}')
+        #options |= QtWidgets.QFileDialog.DontUseNativeDialog
+        '''
+        save_dialog = QtWidgets.QFileDialog(self, "Save Timestamps",
+                                            output_filename,
+                                            "NPZ Files (*.npz)")
+        save_dialog.setDirectory(last_saved_dir_path)
+        file_path, _ = save_dialog.getSaveFileName()
+        '''
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Timestamps",
+                                                             output_filename,
+                                                             "NPZ Files (*.npz)",
+                                                             options=options)
+        if file_path:
+            np.savez(file_path, **data)
+            self.status_bar.showMessage(f'Saved to {file_path}')
+            dir_path = QtCore.QDir(file_path).absolutePath()
+            self.settings.setValue('last_saved_dir_path', dir_path)
 
     def closeEvent(self, event):
         self.settings.setValue('geometry', self.saveGeometry())
-        if 1: #not self.dummy:
-            self.timestamper.device.close()
+        self.settings.sync()
+        self.timestamper.device.close()
         event.accept()
 
 '''        
@@ -329,9 +383,9 @@ if __name__ == '__main__':
         
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    tsApp = TimeStamperApp(dummy=0)
+    tsApp = TimeStamperApp(dummy=1)
     tsApp.show()
-    sys.exit(app.exec_())    
+    sys.exit(app.exec_())
 
 # ts = tsApp.timestamper
 
