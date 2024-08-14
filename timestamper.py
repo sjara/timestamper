@@ -62,6 +62,15 @@ class DummyDevice:
     def close(self):
         pass
 
+
+class DummyModule:
+    """
+    Dummy class to emulate the behavior of U3 module.
+    """
+    def BitDirWrite(self, *args):
+        pass
+
+
 class TimeStamper:
     """
     Class to timestamp the camera frames and other TTL sources.
@@ -76,17 +85,19 @@ class TimeStamper:
         """
         if dummy:
             self.device = DummyDevice()
+            self.u3module = DummyModule()
         else:
             self.device = u3.U3()
+            self.u3module = u3
             
         self.device.getCalibrationData()
         
         # -- Set FIOs to digial and direction to input --
         self.trigger_pin = triggerpin
-        self.device.getFeedback(u3.BitDirWrite(self.trigger_pin, 1))
+        self.device.getFeedback(self.u3module.BitDirWrite(self.trigger_pin, 1))
         self.input_pins = inputpins
         for ind in self.input_pins:
-            self.device.getFeedback(u3.BitDirWrite(ind, 0))
+            self.device.getFeedback(self.u3module.BitDirWrite(ind, 0))
         # FIXME: setting self.state could be done in one line with getFeedback()
         self.state = []
         for ind, pin in enumerate(self.input_pins):
@@ -266,9 +277,13 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         
     @QtCore.Slot()
     def update_trigger_period(self):
-        trigger_period_ms = 1000.0 / float(self.trigger_rate.text())
-        self.label_trigger_period.setText(f'<b>Period (ms):</b> {trigger_period_ms:0.1f}')
-        self.update_total_duration()
+        if self.trigger_rate.text().isnumeric():
+            trigger_period_ms = 1000.0 / float(self.trigger_rate.text())
+            self.label_trigger_period.setText(f'<b>Period (ms):</b> {trigger_period_ms:0.1f}')
+            self.update_total_duration()
+            self.trigger_rate.setStyleSheet('background-color: none;')
+        else:
+            self.trigger_rate.setStyleSheet('background-color: red')
     
     def set_trigger_timer_half_interval(self, trigger_rate):
         timer_half_interval = 0.5/trigger_rate
@@ -276,8 +291,12 @@ class TimeStamperApp(QtWidgets.QMainWindow):
     
     @QtCore.Slot()
     def update_max_triggers(self):
-        self.max_n_triggers = int(self.max_triggers.text())
-        self.update_total_duration()
+        if self.max_triggers.text().isnumeric():
+            self.max_n_triggers = int(self.max_triggers.text())
+            self.update_total_duration()
+            self.max_triggers.setStyleSheet('background-color: none;')
+        else:
+            self.max_triggers.setStyleSheet('background-color: red')
 
     def update_total_duration(self):
         total_duration = self.max_n_triggers / float(self.trigger_rate.text())
