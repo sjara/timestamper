@@ -375,7 +375,8 @@ class TimeStamperApp(QtWidgets.QMainWindow):
         file_ts = self.start_time.strftime('%Y%m%d_%H%M%S')
         subject = self.subject.text()
         last_saved_dir_path = self.settings.value('last_saved_dir_path')
-        output_filename = f'{subject}_timestamps_{file_ts}.npz'
+        # output_filename = f'{subject}_timestamps_{file_ts}.npz'  # Original version
+        output_filename = f'{subject}_{file_ts}_timestamps.npz'
         # FIXME: using the last_saved is not working in the QFileDialog
         #output_full_path = QtCore.QDir(last_saved_dir_path).filePath(output_filename)
         options = QtWidgets.QFileDialog.Options()
